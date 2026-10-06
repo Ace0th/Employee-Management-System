@@ -181,12 +181,12 @@ class DemoSeed(unittest.TestCase):
             with app.app_context():
                 employees = Employee.query.filter(Employee.employee_code.like("ACE%"))
                 self.assertEqual(employees.count(), 50)
-                self.assertEqual(Employee.query.filter(Employee.email.like("employee%@ace-limted.com")).count(), 50)
+                self.assertEqual(Employee.query.filter(Employee.email.like("employee%@peopleos.example")).count(), 50)
                 self.assertEqual(employees.count(), Employee.query.filter(Employee.employee_code.like("ACE%"), Employee.user_id.isnot(None)).count())
                 admin = User.query.filter_by(email=ADMIN_EMAIL).one()
                 self.assertEqual(admin.role, "admin")
                 self.assertTrue(admin.check_password("TestSeedAdmin@123"))
-                employee = User.query.filter_by(email="employee001@ace-limted.com").one()
+                employee = User.query.filter_by(email="employee001@peopleos.example").one()
                 self.assertTrue(employee.check_password("TestSeedEmployee@123"))
                 self.assertNotEqual(employee.password_hash, "TestSeedEmployee@123")
         finally:

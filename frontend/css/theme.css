@@ -1,0 +1,172 @@
+html.theme-dark {
+  color-scheme: dark;
+  --ink: #e7edf4;
+  --muted: #a0afbe;
+  --line: #2b3b4b;
+  --paper: #192632;
+  --canvas: #111b25;
+  --navy: #28455e;
+  --teal-light: #1a3d36;
+  --blue-light: #1d3348;
+  --amber-light: #40351f;
+  --red-light: #442929;
+  --shadow: 0 10px 30px #00000024;
+}
+
+html.theme-dark body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+.theme-toggle {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--muted);
+  padding: 7px 10px;
+  font: 600 11px 'DM Sans', sans-serif;
+  white-space: nowrap;
+}
+
+.theme-toggle:hover {
+  color: var(--ink);
+  border-color: #6b8297;
+}
+
+.auth-form-side {
+  position: relative;
+}
+
+.auth-form-side > .theme-toggle {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+}
+
+html.theme-dark .sidebar,
+html.theme-dark .card {
+  background: var(--paper);
+}
+
+html.theme-dark .topbar {
+  background: #192632e8;
+}
+
+html.theme-dark .auth-page {
+  background: var(--canvas);
+}
+
+html.theme-dark .brand,
+html.theme-dark .crumb strong,
+html.theme-dark .person strong,
+html.theme-dark .detail-item strong,
+html.theme-dark .profile-summary h2,
+html.theme-dark .card-head h2 {
+  color: var(--ink);
+}
+
+html.theme-dark .nav a {
+  color: #afbdca;
+}
+
+html.theme-dark .nav a:hover,
+html.theme-dark .nav a.active {
+  background: #1b3935;
+  color: #62d1b4;
+}
+
+html.theme-dark .btn-light {
+  background: #293846;
+  color: #d2dce5;
+}
+
+html.theme-dark .btn-primary {
+  background: #247962;
+  color: #fff;
+}
+
+html.theme-dark input,
+html.theme-dark select,
+html.theme-dark textarea {
+  background: #111b25;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html.theme-dark th {
+  background: #1d2b37;
+  color: #a0afbe;
+  border-color: var(--line);
+}
+
+html.theme-dark td,
+html.theme-dark .profile-chip {
+  border-color: var(--line);
+}
+
+html.theme-dark tbody tr:hover {
+  background: #1e2d39;
+}
+
+html.theme-dark .bar-track,
+html.theme-dark .pagination button {
+  background: #243340;
+}
+
+html.theme-dark .pagination button {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+html.theme-dark .note {
+  background: #193630;
+  border-color: #28594e;
+  color: #a7e0d1;
+}
+
+html.theme-dark .warning {
+  background: #39321f;
+  border-color: #61522c;
+  color: #e2c77f;
+}
+
+html.theme-dark .error-banner {
+  background: #402726;
+  border-color: #673a38;
+  color: #f1aaaa;
+}
+
+html.theme-dark .badge-active {
+  background: #1b3c34;
+  color: #7cd9be;
+}
+
+html.theme-dark .badge-leave {
+  background: #40351f;
+  color: #e5bd69;
+}
+
+html.theme-dark .badge-resigned {
+  background: #2b3742;
+  color: #b0bfcd;
+}
+
+html.theme-dark .badge-terminated {
+  background: #442929;
+  color: #edaaaa;
+}
+
+html.theme-dark .check {
+  background: #ffffff20;
+}
+
+html.theme-dark .mobile-menu {
+  color: #c0ccd7;
+}
+
+@media (max-width: 600px) {
+  .auth-form-side > .theme-toggle {
+    top: 14px;
+    right: 14px;
+  }
+}

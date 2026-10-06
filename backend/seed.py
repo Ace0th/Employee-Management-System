@@ -6,7 +6,7 @@ from .app import app, initialize_database
 from .extensions import db
 from .models import Employee, User
 
-ADMIN_EMAIL = "admin@ace-limted.com"
+ADMIN_EMAIL = "admin@peopleos.example"
 
 EMPLOYEE_NAMES = [
     "Aarav Sharma", "Diya Patel", "Rohan Mehta", "Ananya Iyer", "Kabir Singh",
@@ -41,7 +41,7 @@ def demo_employees():
         yield {
             "employee_code": f"ACE{index:03d}",
             "full_name": name,
-            "email": f"employee{index:03d}@ace-limted.com",
+            "email": f"employee{index:03d}@peopleos.example",
             "phone": phone,
             "department": department,
             "designation": position,
@@ -69,7 +69,7 @@ def seed(app_instance=None, *, admin_password=None, employee_password=None):
                 if (employee is None and account is None) or (employee and not employee.user and account is None):
                     raise RuntimeError("Set SEED_EMPLOYEE_PASSWORD to a private value before creating demo employee logins.")
         if not admin:
-            admin = User(name="Ace Limited Administrator", email=ADMIN_EMAIL, role="admin")
+            admin = User(name="PeopleOS Administrator", email=ADMIN_EMAIL, role="admin")
             admin.set_password(admin_password)
             db.session.add(admin)
         elif admin.role != "admin":

@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+.packages/
+.pkgs2/
+local-packages/
+*.db
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+Admin pass.txt
+*.log
+logs/
+.cache/
+cache/
+.pytest_cache/

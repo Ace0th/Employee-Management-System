@@ -1,4 +1,4 @@
-# PeopleOS Employee Management System
+# Employee Management System
 
 A full-stack employee management app with a Flask API, SQLAlchemy, a relational database, and a responsive JavaScript frontend.
 

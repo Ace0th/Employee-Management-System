@@ -8,6 +8,14 @@ from sqlalchemy.orm import validates
 from .extensions import db
 
 
+class Organization(db.Model):
+    __tablename__ = "organization_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class User(db.Model):
     __tablename__ = "users"
     __table_args__ = (CheckConstraint("role IN ('admin', 'employee')", name="ck_user_role"),)

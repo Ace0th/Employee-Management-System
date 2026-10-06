@@ -11,7 +11,7 @@ from sqlalchemy import func, inspect as sqlalchemy_inspect, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
-from .models import Employee, User
+from .models import Employee, Organization, User
 from .validators import clean_text, date_value, email_value, employee_fields
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -86,6 +86,64 @@ def create_app(test_config=None):
     @app.post("/api/register")
     def register():
         return response_error("Employee accounts are created by an administrator.", 404)
+
+    @app.get("/api/admin/setup-status")
+    def admin_setup_status():
+        organization = db.session.get(Organization, 1)
+        has_admin = User.query.filter_by(role="admin").first() is not None
+        return jsonify({
+            "available": not has_admin and organization is None and bool(os.getenv("ADMIN_SETUP_KEY")),
+            "company_name": organization.name if organization else "",
+        })
+
+    @app.post("/api/admin/register")
+    def admin_register():
+        token = request.headers.get("X-CSRF-Token", "")
+        if not token or not secrets.compare_digest(token, session.get("csrf_token", "")):
+            return response_error("Your session token is missing or expired. Refresh and try again.", 400)
+        if User.query.filter_by(role="admin").first() or db.session.get(Organization, 1):
+            return response_error("Initial administrator setup is already complete.", 403)
+
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return response_error("Registration details must be a JSON object.")
+        setup_key = data.get("setup_key", "")
+        expected_setup_key = os.getenv("ADMIN_SETUP_KEY", "")
+        if not expected_setup_key or not isinstance(setup_key, str) or not secrets.compare_digest(setup_key, expected_setup_key):
+            return response_error("A valid administrator setup key is required.", 403)
+        try:
+            company_name = clean_text(data.get("company_name"), "Company name", max_length=160)
+            name = clean_text(data.get("name"), "Administrator name", max_length=120)
+            email = email_value(data.get("email"))
+            password = data.get("password", "")
+            if not isinstance(password, str) or len(password) < 12 or len(password) > 128:
+                return response_error("Password must be between 12 and 128 characters.")
+            if password != data.get("confirm_password"):
+                return response_error("Password confirmation does not match.")
+            if User.query.filter_by(email=email).first():
+                return response_error("That email address is already in use.", 409)
+
+            organization = Organization(id=1, name=company_name)
+            admin = User(name=name, email=email, role="admin")
+            admin.set_password(password)
+            db.session.add_all([organization, admin])
+            db.session.commit()
+        except ValueError as exc:
+            db.session.rollback()
+            return response_error(str(exc))
+        except IntegrityError:
+            db.session.rollback()
+            return response_error("Initial administrator setup has already been completed.", 403)
+
+        session.clear()
+        session["user_id"] = admin.id
+        session["csrf_token"] = secrets.token_urlsafe(32)
+        return jsonify({
+            "message": "Company and administrator account created.",
+            "company_name": organization.name,
+            "user": {"id": admin.id, "full_name": admin.full_name, "email": admin.email, "role": admin.role},
+            "csrf_token": session["csrf_token"],
+        }), 201
 
     def authenticate(expected_role=None):
         token = request.headers.get("X-CSRF-Token", "")
@@ -318,6 +376,46 @@ def create_app(test_config=None):
             "id": account.id, "full_name": account.full_name, "email": account.email,
             "created_at": account.created_at.isoformat(), "employee_id": account.employee.id if account.employee else None,
         } for account in accounts]})
+
+    @app.post("/api/admin/accounts/admin")
+    @admin_required
+    def admin_account_create(_user):
+        data = request.get_json(silent=True) or {}
+        if not isinstance(data, dict):
+            return response_error("Administrator details must be a JSON object.")
+        try:
+            company_name = clean_text(data.get("company_name"), "Company name", max_length=160)
+            name = clean_text(data.get("name"), "Administrator name", max_length=120)
+            email = email_value(data.get("email"))
+            password = data.get("password", "")
+            if not isinstance(password, str) or len(password) < 12 or len(password) > 128:
+                return response_error("Password must be between 12 and 128 characters.")
+            if password != data.get("confirm_password"):
+                return response_error("Password confirmation does not match.")
+            if User.query.filter_by(email=email).first():
+                return response_error("That email address is already in use.", 409)
+
+            organization = db.session.get(Organization, 1)
+            if organization is None:
+                organization = Organization(id=1, name=company_name)
+                db.session.add(organization)
+            else:
+                organization.name = company_name
+            admin = User(name=name, email=email, role="admin")
+            admin.set_password(password)
+            db.session.add(admin)
+            db.session.commit()
+            return jsonify({
+                "message": "Administrator account created.",
+                "company_name": organization.name,
+                "admin": {"id": admin.id, "full_name": admin.full_name, "email": admin.email, "role": admin.role},
+            }), 201
+        except ValueError as exc:
+            db.session.rollback()
+            return response_error(str(exc))
+        except IntegrityError:
+            db.session.rollback()
+            return response_error("That email address is already in use.", 409)
 
     @app.put("/api/admin/account")
     @admin_required

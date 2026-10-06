@@ -1,10 +1,9 @@
-import hashlib
 import os
 import secrets
 import sqlite3
 from functools import wraps
 from pathlib import Path
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, session, send_from_directory
@@ -12,7 +11,7 @@ from sqlalchemy import func, inspect as sqlalchemy_inspect, or_, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from .extensions import db
-from .models import AdminInvite, Employee, Organization, User
+from .models import Employee, Organization, User
 from .validators import clean_text, date_value, email_value, employee_fields
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -109,6 +108,8 @@ def create_app(test_config=None):
 
         organization = db.session.get(Organization, 1)
         setup_mode = not User.query.filter_by(role="admin").first() and organization is None
+        if not setup_mode:
+            return response_error("Admin signup is managed by your company administrator. Ask them to add your account in Settings.", 403)
         try:
             company_name = clean_text(data.get("company_name"), "Company name", max_length=160)
             name = clean_text(data.get("name"), "Administrator name", max_length=120)
@@ -121,35 +122,12 @@ def create_app(test_config=None):
             if User.query.filter_by(email=email).first():
                 return response_error("That email address is already in use.", 409)
 
-            invite = None
-            if setup_mode:
-                setup_key = data.get("setup_key", "")
-                expected_setup_key = os.getenv("ADMIN_SETUP_KEY", "")
-                if not expected_setup_key or not isinstance(setup_key, str) or not secrets.compare_digest(setup_key, expected_setup_key):
-                    return response_error("A valid administrator setup key is required.", 403)
-                organization = Organization(id=1, name=company_name)
-                db.session.add(organization)
-            else:
-                invite_code = data.get("invite_code", "")
-                if not isinstance(invite_code, str) or not invite_code:
-                    return response_error("An administrator invitation code is required.", 403)
-                token_hash = hashlib.sha256(invite_code.encode("utf-8")).hexdigest()
-                now = datetime.now(timezone.utc)
-                invite = AdminInvite.query.filter_by(token_hash=token_hash, used_at=None).filter(AdminInvite.expires_at > now).first()
-                if not invite:
-                    return response_error("This administrator invitation is invalid, expired, or already used.", 403)
-                if organization is None:
-                    organization = Organization(id=1, name=company_name)
-                    db.session.add(organization)
-                elif company_name.casefold() != organization.name.casefold():
-                    return response_error("Enter the company name shown on the invitation.")
-
-                claimed = AdminInvite.query.filter_by(id=invite.id, used_at=None).filter(AdminInvite.expires_at > now).update(
-                    {AdminInvite.used_at: now}, synchronize_session=False
-                )
-                if claimed != 1:
-                    db.session.rollback()
-                    return response_error("This administrator invitation is invalid, expired, or already used.", 403)
+            setup_key = data.get("setup_key", "")
+            expected_setup_key = os.getenv("ADMIN_SETUP_KEY", "")
+            if not expected_setup_key or not isinstance(setup_key, str) or not secrets.compare_digest(setup_key, expected_setup_key):
+                return response_error("A valid administrator setup key is required.", 403)
+            organization = Organization(id=1, name=company_name)
+            db.session.add(organization)
 
             admin = User(name=name, email=email, role="admin")
             admin.set_password(password)
@@ -160,13 +138,13 @@ def create_app(test_config=None):
             return response_error(str(exc))
         except IntegrityError:
             db.session.rollback()
-            return response_error("Administrator registration could not be completed. Check the invitation and email, then retry.", 409)
+            return response_error("Administrator registration could not be completed. Check the setup key and email, then retry.", 409)
 
         session.clear()
         session["user_id"] = admin.id
         session["csrf_token"] = secrets.token_urlsafe(32)
         return jsonify({
-            "message": "Company and administrator account created." if setup_mode else "Administrator account created.",
+            "message": "Company and administrator account created.",
             "company_name": organization.name,
             "user": {"id": admin.id, "full_name": admin.full_name, "email": admin.email, "role": admin.role},
             "csrf_token": session["csrf_token"],
@@ -443,34 +421,6 @@ def create_app(test_config=None):
         except IntegrityError:
             db.session.rollback()
             return response_error("That email address is already in use.", 409)
-
-    @app.post("/api/admin/invites")
-    @admin_required
-    def admin_invite_create(user):
-        data = request.get_json(silent=True) or {}
-        if not isinstance(data, dict):
-            return response_error("Invitation details must be a JSON object.")
-        try:
-            company_name = clean_text(data.get("company_name"), "Company name", max_length=160)
-        except ValueError as exc:
-            return response_error(str(exc))
-
-        invite_code = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
-        organization = db.session.get(Organization, 1)
-        if organization is None:
-            organization = Organization(id=1, name=company_name)
-            db.session.add(organization)
-        else:
-            organization.name = company_name
-        invite = AdminInvite(
-            token_hash=hashlib.sha256(invite_code.encode("utf-8")).hexdigest(),
-            created_by=user.id,
-            expires_at=expires_at,
-        )
-        db.session.add(invite)
-        db.session.commit()
-        return jsonify({"invite_code": invite_code, "company_name": organization.name, "expires_at": expires_at.isoformat()}), 201
 
     @app.put("/api/admin/account")
     @admin_required

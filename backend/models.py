@@ -16,17 +16,6 @@ class Organization(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
 
-class AdminInvite(db.Model):
-    __tablename__ = "admin_invites"
-
-    id = db.Column(db.Integer, primary_key=True)
-    token_hash = db.Column(db.String(64), nullable=False, unique=True)
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    used_at = db.Column(db.DateTime(timezone=True))
-
-
 class User(db.Model):
     __tablename__ = "users"
     __table_args__ = (CheckConstraint("role IN ('admin', 'employee')", name="ck_user_role"),)

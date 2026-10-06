@@ -319,6 +319,41 @@ def create_app(test_config=None):
             "created_at": account.created_at.isoformat(), "employee_id": account.employee.id if account.employee else None,
         } for account in accounts]})
 
+    @app.put("/api/admin/account")
+    @admin_required
+    def admin_account_update(user):
+        data = request.get_json(silent=True) or {}
+        try:
+            email = email_value(data.get("email"))
+            current_password = data.get("current_password", "")
+            if not isinstance(current_password, str) or not user.check_password(current_password):
+                return response_error("Current password is incorrect.", 400)
+
+            email_owner = User.query.filter(User.email == email, User.id != user.id).first()
+            if email_owner:
+                return response_error("That email address is already in use.", 409)
+
+            new_password = data.get("new_password", "")
+            if new_password:
+                if not isinstance(new_password, str) or len(new_password) < 8 or len(new_password) > 128:
+                    return response_error("New password must be between 8 and 128 characters.")
+                user.set_password(new_password)
+
+            user.email = email
+            db.session.commit()
+            session["csrf_token"] = secrets.token_urlsafe(32)
+            return jsonify({
+                "message": "Administrator login details updated.",
+                "user": {"id": user.id, "full_name": user.full_name, "email": user.email, "role": user.role},
+                "csrf_token": session["csrf_token"],
+            })
+        except ValueError as exc:
+            db.session.rollback()
+            return response_error(str(exc))
+        except IntegrityError:
+            db.session.rollback()
+            return response_error("That email address is already in use.", 409)
+
     # Keep the original API stable while exposing explicit, admin-scoped API URLs.
     app.add_url_rule("/api/admin/dashboard", endpoint="admin_dashboard_api", view_func=app.view_functions["dashboard"], methods=["GET"])
     app.add_url_rule("/api/admin/employees", endpoint="admin_employees_list_api", view_func=app.view_functions["employees_list"], methods=["GET"])

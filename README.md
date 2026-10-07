@@ -7,7 +7,7 @@ A full-stack employee management app with a Flask API, SQLAlchemy, a relational 
 - Separate employee and admin login flows and dashboards.
 - Server-enforced role checks on admin and employee endpoints, CSRF protection on writes, and Werkzeug password hashes.
 - Admins can search, view, add, edit, and delete employees. Creating an employee also creates their employee login.
-- The first administrator can be created through a setup-key-protected registration page; signed-in admins can add accounts directly or create one-time admin signup invitations in Settings.
+- Public administrator signup is available from the Admin Login page; every signup receives full admin access.
 - Employees can see only their own linked employee information and edit permitted profile details.
 - Public employee registration is disabled. Admins issue employee credentials.
 
@@ -24,17 +24,19 @@ python -m backend.app
 
 Open <http://127.0.0.1:5000/employee/login> or <http://127.0.0.1:5000/admin/login>. The default database is `instance/employee_management.db`. Set a private `SECRET_KEY` in `.env` before using the app beyond local development.
 
-For browser-based first-admin setup, set a private `ADMIN_SETUP_KEY` in `.env`, start with an empty database, and visit `/admin/register`. The form requires that key and is available only before an administrator or company setup exists. Remove the key after creating the first admin. Alternatively, use `python -m backend.create_admin`. Signed-in admins can create single-use invitations in Settings; each expires after 24 hours and signup requires the invitation code.
+Open `/admin/login` and select **Create First Admin Account** (the link changes to **Create Admin Account** after the first signup). Admin signup is public by default, and every successful signup receives full administrator privileges. Set `PUBLIC_ADMIN_SIGNUP=0` to disable public signups and restrict new admin accounts to signed-in administrators. Alternatively, create the initial local admin with `python -m backend.create_admin`.
 
 ## Production deployment
 
-This app can run as a Render Web Service. Connect a private GitHub repository, provision managed PostgreSQL, then configure:
+This app can run as a Render Web Service or a Vercel Flask Function. For either hosted deployment, provision managed PostgreSQL and configure:
 
 - Build command: `pip install -r requirements.txt`
 - Start command: `gunicorn --bind 0.0.0.0:$PORT backend.app:app`
 - Environment: `APP_ENV=production`, `FLASK_DEBUG=0`, `COOKIE_SECURE=1`, `SECRET_KEY` as a generated secret, and `DATABASE_URL` as the managed PostgreSQL connection string.
 
-The app creates its tables at startup. Create the first production administrator once by running `python -m backend.create_admin` in a secure shell with the production environment variables set, or configure a private `ADMIN_SETUP_KEY` temporarily and use `/admin/register` before any admin/company exists. Remove that key after setup. Passwords are stored as hashes. Do not run the demo seed on a real employee database. Use a managed database and backups; the local SQLite file is for development.
+For Vercel, import the repository root as the project root and set those environment variables for Production and Preview. `pyproject.toml` points Vercel to `backend.app:app`, and `vercel.json` bundles the frontend files with the function. If `DATABASE_URL` is absent on Vercel, the app uses `/tmp/peopleos-preview.db` only to avoid a startup crash; that file is ephemeral and is not suitable for user or employee data. A persistent PostgreSQL `DATABASE_URL` is required for a usable deployment. Set a stable private `SECRET_KEY`; production startup intentionally fails when it is missing.
+
+The app creates its tables at startup. Create an administrator by registering at `/admin/register` or run `python -m backend.create_admin` in a secure shell with production environment variables set. Public admin registration grants full employee-data access to anyone who completes signup; set `PUBLIC_ADMIN_SIGNUP=0` before using the deployment as a real company system. Passwords are stored as hashes. Do not run the demo seed on a real employee database. Use a managed database and backups; the local SQLite file is for development.
 
 ## Demo data
 

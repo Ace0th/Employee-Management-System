@@ -14,9 +14,9 @@ def main():
         email = email_value(input("Administrator email: "))
         if User.query.filter_by(email=email).first():
             raise SystemExit("That email already belongs to an account.")
-        password = getpass("Password (12 characters minimum): ")
-        if len(password) < 12 or len(password) > 128:
-            raise SystemExit("Password must be between 12 and 128 characters.")
+        password = getpass("Password (8 characters minimum): ")
+        if len(password) < 8 or len(password) > 128:
+            raise SystemExit("Password must be between 8 and 128 characters.")
         if password != getpass("Confirm password: "):
             raise SystemExit("Passwords do not match.")
         user = User(name=name, email=email, role="admin")

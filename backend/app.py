@@ -26,7 +26,16 @@ def create_app(test_config=None):
     secret_key = os.getenv("SECRET_KEY")
     if production and not secret_key:
         raise RuntimeError("Set a private SECRET_KEY environment variable before starting in production.")
-    database_url = os.getenv("DATABASE_URL", "sqlite:///employee_management.db")
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        # Vercel's function filesystem is read-only except for /tmp. This SQLite
+        # fallback keeps an unconfigured preview from crashing during import;
+        # deployments that need durable data must set DATABASE_URL to PostgreSQL.
+        database_url = (
+            "sqlite:////tmp/peopleos-preview.db"
+            if os.getenv("VERCEL") == "1"
+            else "sqlite:///employee_management.db"
+        )
     if database_url.startswith("postgres://"):
         database_url = "postgresql+psycopg://" + database_url.removeprefix("postgres://")
     elif database_url.startswith("postgresql://"):
@@ -43,6 +52,9 @@ def create_app(test_config=None):
     if test_config:
         app.config.update(test_config)
     db.init_app(app)
+
+    def public_admin_signup_enabled():
+        return os.getenv("PUBLIC_ADMIN_SIGNUP", "1").strip().lower() in {"1", "true", "yes", "on"}
 
     def response_error(message, status=400):
         return jsonify({"error": message}), status
@@ -92,8 +104,9 @@ def create_app(test_config=None):
         organization = db.session.get(Organization, 1)
         has_admin = User.query.filter_by(role="admin").first() is not None
         return jsonify({
-            "available": not has_admin and organization is None and bool(os.getenv("ADMIN_SETUP_KEY")),
-            "company_name": organization.name if organization else "",
+            "available": public_admin_signup_enabled(),
+            "has_admin": has_admin,
+            "company_name": organization.name if organization else "PeopleOS",
         })
 
     @app.post("/api/admin/register")
@@ -101,33 +114,40 @@ def create_app(test_config=None):
         token = request.headers.get("X-CSRF-Token", "")
         if not token or not secrets.compare_digest(token, session.get("csrf_token", "")):
             return response_error("Your session token is missing or expired. Refresh and try again.", 400)
+        if not public_admin_signup_enabled():
+            return response_error("Public admin signup is disabled. Ask an administrator to create your account.", 403)
 
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
             return response_error("Registration details must be a JSON object.")
 
-        organization = db.session.get(Organization, 1)
-        setup_mode = not User.query.filter_by(role="admin").first() and organization is None
-        if not setup_mode:
-            return response_error("Admin signup is managed by your company administrator. Ask them to add your account in Settings.", 403)
         try:
-            company_name = clean_text(data.get("company_name"), "Company name", max_length=160)
             name = clean_text(data.get("name"), "Administrator name", max_length=120)
             email = email_value(data.get("email"))
             password = data.get("password", "")
-            if not isinstance(password, str) or len(password) < 12 or len(password) > 128:
-                return response_error("Password must be between 12 and 128 characters.")
+            if not isinstance(password, str) or len(password) < 8 or len(password) > 128:
+                return response_error("Password must be between 8 and 128 characters.")
             if password != data.get("confirm_password"):
                 return response_error("Password confirmation does not match.")
-            if User.query.filter_by(email=email).first():
-                return response_error("That email address is already in use.", 409)
 
-            setup_key = data.get("setup_key", "")
-            expected_setup_key = os.getenv("ADMIN_SETUP_KEY", "")
-            if not expected_setup_key or not isinstance(setup_key, str) or not secrets.compare_digest(setup_key, expected_setup_key):
-                return response_error("A valid administrator setup key is required.", 403)
-            organization = Organization(id=1, name=company_name)
-            db.session.add(organization)
+            # Serialize account creation so simultaneous signups do not race
+            # while creating the initial workspace row.
+            if db.engine.dialect.name == "sqlite":
+                db.session.execute(text("BEGIN IMMEDIATE"))
+                organization = db.session.get(Organization, 1)
+            else:
+                organization = db.session.execute(
+                    db.select(Organization).where(Organization.id == 1).with_for_update()
+                ).scalar_one_or_none()
+            if User.query.filter_by(email=email).first():
+                db.session.rollback()
+                return response_error("That email address is already in use.", 409)
+            if organization is None:
+                organization = Organization(id=1, name="PeopleOS")
+                db.session.add(organization)
+                # The unique organization row also serializes concurrent first
+                # setup requests on PostgreSQL when no workspace row exists.
+                db.session.flush()
 
             admin = User(name=name, email=email, role="admin")
             admin.set_password(password)
@@ -138,7 +158,7 @@ def create_app(test_config=None):
             return response_error(str(exc))
         except IntegrityError:
             db.session.rollback()
-            return response_error("Administrator registration could not be completed. Check the setup key and email, then retry.", 409)
+            return response_error("Administrator signup could not be completed. That email address may already be in use.", 409)
 
         session.clear()
         session["user_id"] = admin.id
@@ -393,8 +413,8 @@ def create_app(test_config=None):
             name = clean_text(data.get("name"), "Administrator name", max_length=120)
             email = email_value(data.get("email"))
             password = data.get("password", "")
-            if not isinstance(password, str) or len(password) < 12 or len(password) > 128:
-                return response_error("Password must be between 12 and 128 characters.")
+            if not isinstance(password, str) or len(password) < 8 or len(password) > 128:
+                return response_error("Password must be between 8 and 128 characters.")
             if password != data.get("confirm_password"):
                 return response_error("Password confirmation does not match.")
             if User.query.filter_by(email=email).first():

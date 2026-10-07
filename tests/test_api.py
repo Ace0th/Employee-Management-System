@@ -2,10 +2,11 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from backend.app import create_app, initialize_database
 from backend.extensions import db
-from backend.models import Employee, User
+from backend.models import Employee, Organization, User
 from backend.seed import ADMIN_EMAIL, seed
 
 
@@ -146,6 +147,73 @@ class EmployeeApiFlows(unittest.TestCase):
         self.assertEqual(self.write("post", "/api/logout").status_code, 200)
         self.assertEqual(self.client.get("/api/me").status_code, 401)
         self.assertEqual(self.login("ava@example.com", "ChangedPass123!").status_code, 200)
+
+
+class FirstAdminSetup(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.app = create_app({
+            "TESTING": True, "SECRET_KEY": "first-admin-test",
+            "SQLALCHEMY_DATABASE_URI": "sqlite:///" + os.path.join(self.temp.name, "first-admin.db").replace("\\", "/"),
+        })
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            db.create_all()
+
+    def tearDown(self):
+        with self.app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+        self.temp.cleanup()
+
+    def write(self, path, payload):
+        token = self.client.get("/api/csrf").get_json()["csrf_token"]
+        return self.client.post(path, json=payload, headers={"X-CSRF-Token": token})
+
+    def test_public_admin_signup_is_available_without_a_setup_key(self):
+        payload = {
+            "name": "First Admin", "email": "first.admin@example.com",
+            "password": "Admin123", "confirm_password": "Admin123",
+        }
+        with patch.dict(os.environ, {"ADMIN_SETUP_KEY": ""}):
+            self.assertTrue(self.client.get("/api/admin/setup-status").get_json()["available"])
+            too_short = self.write("/api/admin/register", dict(payload, email="short.admin@example.com", password="Admin12", confirm_password="Admin12"))
+            self.assertEqual(too_short.status_code, 400)
+            created = self.write("/api/admin/register", payload)
+            self.assertEqual(created.status_code, 201, created.get_json())
+            self.assertEqual(created.get_json()["user"]["role"], "admin")
+            setup_status = self.client.get("/api/admin/setup-status").get_json()
+            self.assertTrue(setup_status["available"])
+            self.assertTrue(setup_status["has_admin"])
+            second = self.write("/api/admin/register", dict(payload, email="another.admin@example.com"))
+            self.assertEqual(second.status_code, 201, second.get_json())
+            self.assertEqual(second.get_json()["user"]["role"], "admin")
+        with self.app.app_context():
+            admin = User.query.filter_by(email=payload["email"]).one()
+            self.assertNotEqual(admin.password_hash, payload["password"])
+            self.assertTrue(admin.check_password(payload["password"]))
+
+    def test_first_admin_can_be_created_when_workspace_already_exists(self):
+        with self.app.app_context():
+            db.session.add(Organization(id=1, name="PeopleOS Portfolio"))
+            db.session.commit()
+        payload = {
+            "name": "Workspace Admin", "email": "workspace.admin@example.com",
+            "password": "WorkspacePass123!", "confirm_password": "WorkspacePass123!",
+        }
+        response = self.write("/api/admin/register", payload)
+        self.assertEqual(response.status_code, 201, response.get_json())
+        self.assertEqual(response.get_json()["company_name"], "PeopleOS Portfolio")
+
+    def test_public_admin_signup_can_be_disabled_by_configuration(self):
+        payload = {
+            "name": "Blocked Admin", "email": "blocked.admin@example.com",
+            "password": "BlockedAdminPass123!", "confirm_password": "BlockedAdminPass123!",
+        }
+        with patch.dict(os.environ, {"PUBLIC_ADMIN_SIGNUP": "0"}):
+            self.assertFalse(self.client.get("/api/admin/setup-status").get_json()["available"])
+            response = self.write("/api/admin/register", payload)
+            self.assertEqual(response.status_code, 403)
 
 
 class LegacyDatabaseMigration(unittest.TestCase):
